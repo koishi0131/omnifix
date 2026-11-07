@@ -1,5 +1,14 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
+#include <format>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 namespace avs2
 {
     using node_ptr = void*;

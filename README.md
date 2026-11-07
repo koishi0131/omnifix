@@ -1,4 +1,10 @@
 # omnifix
+
+This package is **helesta ver. - unofficial fork**, based on aixxe's Omnifix
+0.8.0, commit `08c652060c3c07787a77847f5877746b8b6d3400`.
+It is not an official aixxe release. See [HELESTA.md](HELESTA.md) for the
+INFINITAS and old-chart options, validation, and build instructions.
+
 [![Build](https://github.com/aixxe/omnifix/actions/workflows/Build-MSVC.yml/badge.svg)](https://github.com/aixxe/omnifix/actions/workflows/Build-MSVC.yml)
 [![Build](https://github.com/aixxe/omnifix/actions/workflows/Build-LLVM.yml/badge.svg)](https://github.com/aixxe/omnifix/actions/workflows/Build-LLVM.yml)
 [![Build](https://github.com/aixxe/omnifix/actions/workflows/Build-GCC.yml/badge.svg)](https://github.com/aixxe/omnifix/actions/workflows/Build-GCC.yml)

@@ -11,6 +11,8 @@
 #include "bm2dx.h"
 #include "memory.h"
 #include "modules.h"
+#include "omni_folder.h"
+#include "old_charts.h"
 #include "exceptions.h"
 
 using namespace omnifix;
@@ -337,7 +339,7 @@ auto setup_leggendaria_patch(auto&& bm2dx)
 /**
  * Allocates a larger buffer for the music data file.
  */
-auto setup_music_data_buffer_patch(auto&& bm2dx)
+auto setup_music_data_buffer_patch(auto&& bm2dx, bool disable_old_charts)
 {
     avs2::log::info("enabling music data buffer patches");
 
@@ -351,8 +353,15 @@ auto setup_music_data_buffer_patch(auto&& bm2dx)
         /* IIDX 27+ */ "BB 32 00 00 00 EB ? [E8]",
     });
 
+    // Reuse the getter reached from the MDB loader. A separate global
+    // "E8 ... 85 DB 78" search also matches an unrelated function in 1027.
+    auto const buffer_getter = memory::follow(call);
+    if (memory::find({ buffer_getter, buffer_getter + 8 },
+        "48 8D 05 ? ? ? ? C3", true) != buffer_getter)
+        throw error { "unexpected music data buffer getter; patch aborted" };
+
     auto const buffer = reinterpret_cast<void**>
-        (memory::follow(memory::follow(call)));
+        (memory::follow(buffer_getter));
 
     // Patch out a check that fails if the custom database has too many songs.
     base = memory::find(region, "E8 ? ? ? ? 48 8B C8");
@@ -380,6 +389,32 @@ auto setup_music_data_buffer_patch(auto&& bm2dx)
         ctx.r8  = music_data_buffer_size;
     });
 
+    // After the native read returns, clear ratings before the game parses MDB.
+    if (disable_old_charts)
+    {
+        avs2::log::info("enabling old-chart filter: MID suffix 500..999");
+        auto static old_charts_read_hook = safetyhook::create_mid(target + 6,
+            [] (SafetyHookContext& ctx) -> void
+        {
+            auto const count = static_cast<std::int32_t>(ctx.rax);
+            if (count <= 0 || static_cast<std::uint32_t>(count) > music_data_buffer_size)
+                return;
+            try
+            {
+                auto const result = old_charts::clear_ratings(
+                    std::span<std::uint8_t> { new_buffer, static_cast<std::size_t>(count) });
+                if (result.valid)
+                    avs2::log::info("old-chart filter: cleared all SP/DP ratings for {} songs", result.songs);
+                else
+                    avs2::log::warning("old-chart filter: unsupported or invalid MDB; ratings unchanged");
+            }
+            catch (const std::exception& error)
+            {
+                avs2::log::warning("old-chart filter failed: {}", error.what());
+            }
+        });
+    }
+
     // Finally, patch all references to the music data buffer.
     target = find_first_pattern(bm2dx, std::array {
         /* IIDX 32  */ "E8 ? ? ? ? 39 58 ? 76 ? 48 [?] 0D ? ? ? ? 8B 04 99",
@@ -402,9 +437,8 @@ auto setup_music_data_buffer_patch(auto&& bm2dx)
     }
     add_patch(target, { 0x8B });
 
-    target = memory::find(bm2dx, "E8 ? ? ? ? 85 DB 78");
-    target = memory::follow(target);
-    add_patch(target + 1, { 0x8B });
+    // LEA -> MOV: return the relocated buffer pointer stored in this slot.
+    add_patch(buffer_getter + 1, { 0x8B });
 }
 
 /**
@@ -823,7 +857,7 @@ auto setup_boot_text_hook(auto&& bm2dx)
         render_text(1, 60, 112 + (8 * 32), &color, "OMNIFIX");
         render_text(1, 300, 112 + (8 * 32), &color,
             ":<color 00ffffff>%s</color> <color ffffff30>(%s)</color>",
-            META_PROJECT_VERSION, META_GIT_COMMIT_SHORT);
+            META_PROJECT_VERSION, "helesta ver. - unofficial fork");
     });
 }
 
@@ -899,7 +933,28 @@ auto init(std::uint8_t* module) -> int
         setup_omnimix_path_patch(region);
         setup_revision_patch(region);
         setup_leggendaria_patch(region);
-        setup_music_data_buffer_patch(region);
+        setup_music_data_buffer_patch(region,
+            flags.contains("omnifix-disable-old-charts"));
+
+        // All INFINITAS functionality remains opt-in, independently of old charts.
+        if (!flags.contains("omnifix-enable-inf-folder"))
+        {
+            avs2::log::misc(
+                "80th folder: disabled by default; use --omnifix-enable-inf-folder to enable");
+        }
+        else
+        {
+            auto folder_settings = omni_folder::config {};
+            folder_settings.disable_old_charts =
+                flags.contains("omnifix-disable-old-charts");
+            folder_settings.enable_phase2 =
+                !flags.contains("omnifix-disable-80th-phase2");
+            folder_settings.enable_subscreen_texture =
+                !flags.contains("omnifix-disable-80th-subscreen");
+            folder_settings.enable_extended_title_color =
+                !flags.contains("omnifix-disable-80th-extended-title");
+            omni_folder::setup(region, override_mdb_path, folder_settings);
+        }
     }
 
     if (flags.contains("omnifix-enable-unlock-all"))

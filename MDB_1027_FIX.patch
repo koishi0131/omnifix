@@ -1,0 +1,31 @@
+--- a/src/omnifix.cc
++++ b/src/omnifix.cc
+@@ -353,8 +353,15 @@
+         /* IIDX 27+ */ "BB 32 00 00 00 EB ? [E8]",
+     });
+ 
++    // Reuse the getter reached from the MDB loader. A separate global
++    // "E8 ... 85 DB 78" search also matches an unrelated function in 1027.
++    auto const buffer_getter = memory::follow(call);
++    if (memory::find({ buffer_getter, buffer_getter + 8 },
++        "48 8D 05 ? ? ? ? C3", true) != buffer_getter)
++        throw error { "unexpected music data buffer getter; patch aborted" };
++
+     auto const buffer = reinterpret_cast<void**>
+-        (memory::follow(memory::follow(call)));
++        (memory::follow(buffer_getter));
+ 
+     // Patch out a check that fails if the custom database has too many songs.
+     base = memory::find(region, "E8 ? ? ? ? 48 8B C8");
+@@ -430,9 +437,8 @@
+     }
+     add_patch(target, { 0x8B });
+ 
+-    target = memory::find(bm2dx, "E8 ? ? ? ? 85 DB 78");
+-    target = memory::follow(target);
+-    add_patch(target + 1, { 0x8B });
++    // LEA -> MOV: return the relocated buffer pointer stored in this slot.
++    add_patch(buffer_getter + 1, { 0x8B });
+ }
+ 
+ /**

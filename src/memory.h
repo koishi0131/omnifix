@@ -1,9 +1,20 @@
 #pragma once
 
-#include <span>
+#include <algorithm>
 #include <cstdint>
+#include <initializer_list>
+#include <optional>
+#include <ranges>
+#include <span>
 #include <string_view>
-#include <minwindef.h>
+#include <vector>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 
 namespace omnifix::memory
 {
